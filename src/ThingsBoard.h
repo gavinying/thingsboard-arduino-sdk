@@ -778,6 +778,7 @@ class ThingsBoardSized
       char buffer[jsonSize];
       serializeJson(data, buffer, jsonSize);
       Logger::log(buffer);
+      char _md5SumTmp[33];
 
       // Check if firmware is available for our device
       if (!data.containsKey(FW_VER_KEY) || !data.containsKey(FW_TITLE_KEY)) {
@@ -790,7 +791,8 @@ class ThingsBoardSized
       const char* fw_version = data[FW_VER_KEY].as<const char*>();
       m_fwChecksum = data[FW_CHKS_KEY].as<const char*>();
       const char* fw_checksum_algorithm = data[FW_CHKS_ALGO_KEY].as<const char*>();
-      m_fwSize = data[FW_SIZE_KEY].as<const uint16_t>();
+      // m_fwSize = data[FW_SIZE_KEY].as<const uint16_t>();
+      m_fwSize = data[FW_SIZE_KEY].as<const unsigned int>();
 
       if (fw_title == nullptr || fw_version == nullptr || m_currFwTitle == nullptr || m_currFwVersion == nullptr || m_fwChecksum == nullptr || fw_checksum_algorithm == nullptr) {
         Logger::log(EMPTY_FW);
@@ -840,8 +842,17 @@ class ThingsBoardSized
         return;
       }
 
+      if (m_fwChecksum != nullptr) {
+        strcpy(_md5SumTmp, m_fwChecksum);
+      }
+
       // Update state
       Firmware_Send_State(FW_STATE_DOWNLOADING);
+      m_fwState = FW_STATE_DOWNLOADING;
+    
+      if (m_fwChecksum != nullptr) {
+        m_fwChecksum = _md5SumTmp;
+      }
 
       char size[detect_size(NUMBER_PRINTF, chunkSize)];
       // Download the firmware
@@ -861,8 +872,9 @@ class ThingsBoardSized
           // Check if the current chunk is not the last one.
           if (numberOfChunk != (currChunk + 1)) {
             // Check if state is still DOWNLOADING and did not fail.
-            if (strncmp_P(FW_STATE_DOWNLOADING, m_fwState, strlen(FW_STATE_DOWNLOADING) == 0)) {
+            if (strncmp_P(FW_STATE_DOWNLOADING, m_fwState, strlen(FW_STATE_DOWNLOADING)) == 0) {
               currChunk++;
+              nbRetry = 3U;
             }
             else {
               nbRetry--;
@@ -1184,7 +1196,8 @@ class ThingsBoardSized
       snprintf_P(message, sizeof(message), FW_CHUNK, m_fwChunkReceive, length);
       Logger::log(message);
 
-      m_fwState = FW_STATE_FAILED;
+      // m_fwState = FW_STATE_FAILED;
+      m_fwState = FW_STATE_DOWNLOADING;
 
       if (m_fwChunkReceive == 0) {
         sizeReceive = 0;
@@ -1195,6 +1208,7 @@ class ThingsBoardSized
         if (!Update.begin(m_fwSize)) {
           Logger::log(ERROR_UPDATE_BEGIN);
           m_fwState = FW_STATE_UPDATE_ERROR;
+          Update.abort();
           return;
         }
       }
@@ -1416,7 +1430,7 @@ class ThingsBoardSized
     const char* m_currFwTitle;
     const char* m_currFwVersion;
     const char* m_fwState;
-    uint16_t m_fwSize;
+    unsigned int m_fwSize;
     const char* m_fwChecksum;
     std::function<void(const bool&)> m_fwUpdatedCallback;
     Shared_Attribute_Request_Callback m_fwResponseCallback;
